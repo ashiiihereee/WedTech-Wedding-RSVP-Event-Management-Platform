@@ -106,7 +106,7 @@ cd wedding-rsvp-platform
 
 Scan the QR code below to instantly access the platform:
 
-![QR Code](Websiteqrcode.png)
+![QR Code](qrcode.png)
 
 ---
 

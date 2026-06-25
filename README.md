@@ -95,10 +95,10 @@ cd wedding-rsvp-platform
 ## 📸 Screenshots
 
 ### Homepage
-![Homepage](screenshots/homepage.png)
+![Homepage](Homepage.png)
 
 ### Dashboard
-![Dashboard](screenshots/dashboard.png)
+![Dashboard](dashboard.png)
 
 ---
 
@@ -106,7 +106,7 @@ cd wedding-rsvp-platform
 
 Scan the QR code below to instantly access the platform:
 
-![QR Code](Wedding.png)
+![QR Code](Websiteqrcode.png)
 
 ---
 

@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RSVP Dashboard</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+  <style>
+    :root {
+      --maroon:     #6b1527;
+      --maroon-d:   #3d0a15;
+      --maroon-l:   #8f2038;
+      --gold:       #b8872a;
+      --gold-l:     #d4a84b;
+      --gold-pale:  #f5ead4;
+      --gold-faint: #fdf8ee;
+      --cream:      #faf6ef;
+      --saffron:    #c96b20;
+      --ink:        #1a0a08;
+      --muted:      #7a5a4a;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Jost', sans-serif;
+      background: var(--cream);
+      color: var(--ink);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Noise / grain texture overlay ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0.45;
+    }
+
+    /* ══════════════════════════════════
+       HEADER
+    ══════════════════════════════════ */
+    header {
+      position: relative;
+      background: var(--maroon-d);
+      padding: 3.5rem 2rem 2.5rem;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    /* Ornamental gold border top */
+    header::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, transparent, var(--gold-l), var(--gold), var(--saffron), var(--gold), var(--gold-l), transparent);
+    }
+
+    /* Radial glow behind title */
+    header::after {
+      content: '';
+      position: absolute;
+      top: -60px; left: 50%;
+      transform: translateX(-50%);
+      width: 500px; height: 300px;
+      background: radial-gradient(ellipse, rgba(184,135,42,0.18) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .header-inner {
+      position: relative;
+      z-index: 2;
+      animation: fadeDown 1s cubic-bezier(0.22,1,0.36,1) both;
+    }
+
+    .header-ornament {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.2rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .header-ornament span {
+      display: block;
+      width: 80px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold-l));
+    }
+    .header-ornament span:last-child {
+      background: linear-gradient(90deg, var(--gold-l), transparent);
+    }
+
+    .header-ornament svg {
+      width: 22px; height: 22px;
+      fill: var(--gold-l);
+      animation: spin 12s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    header h1 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(2.2rem, 5vw, 3.6rem);
+      font-weight: 300;
+      letter-spacing: 0.08em;
+      color: var(--gold-l);
+      text-shadow: 0 2px 30px rgba(212,168,75,0.3);
+      line-height: 1.1;
+    }
+
+    header .subtitle {
+      margin-top: 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 400;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: rgba(245,234,212,0.5);
+    }
+
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ══════════════════════════════════
+       LAYOUT
+    ══════════════════════════════════ */
+    .dashboard-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+    }
+
+    /* Section label */
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.6rem;
+    }
+
+    .section-header h2 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.55rem;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      color: var(--maroon);
+    }
+
+    .section-header::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--gold), transparent);
+    }
+
+    /* ══════════════════════════════════
+       STAT CARDS
+    ══════════════════════════════════ */
+    .stats-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1.2rem;
+      margin-bottom: 2.8rem;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid rgba(184,135,42,0.18);
+      border-radius: 4px;
+      padding: 2rem 1.8rem;
+      position: relative;
+      overflow: hidden;
+      cursor: default;
+      transition: transform 0.35s ease, box-shadow 0.35s ease;
+      box-shadow: 0 2px 20px rgba(107,21,39,0.06);
+      animation: riseUp 0.7s cubic-bezier(0.22,1,0.36,1) both;
+    }
+
+    .card:nth-child(1) { animation-delay: 0.1s; }
+    .card:nth-child(2) { animation-delay: 0.2s; }
+    .card:nth-child(3) { animation-delay: 0.3s; }
+    .card:nth-child(4) { animation-delay: 0.4s; }
+
+    @keyframes riseUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Gold corner accent */
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 3px; height: 100%;
+      background: linear-gradient(180deg, var(--gold-l), var(--saffron));
+      border-radius: 4px 0 0 4px;
+    }
+
+    /* Soft shimmer on hover */
+    .card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 40%, rgba(212,168,75,0.08) 60%, transparent 80%);
+      transform: translateX(-100%);
+      transition: transform 0.6s ease;
+    }
+
+    .card:hover::after { transform: translateX(100%); }
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 35px rgba(107,21,39,0.12);
+    }
+
+    .card-icon {
+      font-size: 1.3rem;
+      margin-bottom: 0.8rem;
+      opacity: 0.7;
+    }
+
+    .card h2 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 3rem;
+      font-weight: 300;
+      line-height: 1;
+      color: var(--maroon);
+      letter-spacing: -0.01em;
+    }
+
+    .card p {
+      margin-top: 0.4rem;
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ══════════════════════════════════
+       CHARTS
+    ══════════════════════════════════ */
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 1.6rem;
+      margin-bottom: 2.8rem;
+    }
+
+    .chart-card {
+      background: white;
+      border: 1px solid rgba(184,135,42,0.15);
+      border-radius: 4px;
+      padding: 2rem;
+      box-shadow: 0 2px 20px rgba(107,21,39,0.06);
+      transition: transform 0.35s ease, box-shadow 0.35s ease;
+      animation: riseUp 0.7s cubic-bezier(0.22,1,0.36,1) 0.5s both;
+    }
+
+    .chart-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 35px rgba(107,21,39,0.1);
+    }
+
+    .chart-card h3 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.15rem;
+      font-weight: 400;
+      letter-spacing: 0.06em;
+      color: var(--maroon);
+      margin-bottom: 1.4rem;
+      padding-bottom: 0.8rem;
+      border-bottom: 1px solid var(--gold-pale);
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 280px !important;
+    }
+
+    /* ══════════════════════════════════
+       TABLE
+    ══════════════════════════════════ */
+    .table-section {
+      animation: riseUp 0.7s cubic-bezier(0.22,1,0.36,1) 0.6s both;
+    }
+
+    .rsvp-table-wrapper {
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid rgba(184,135,42,0.18);
+      box-shadow: 0 4px 25px rgba(107,21,39,0.08);
+    }
+
+    /* Horizontal scrollbar styling */
+    .rsvp-table-wrapper {
+      overflow-x: auto;
+    }
+
+    .rsvp-table-wrapper::-webkit-scrollbar { height: 5px; }
+    .rsvp-table-wrapper::-webkit-scrollbar-track { background: var(--gold-faint); }
+    .rsvp-table-wrapper::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 10px; }
+
+    #rsvpTable {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      min-width: 900px;
+      background: white;
+    }
+
+    #rsvpTable thead {
+      background: var(--maroon-d);
+    }
+
+    #rsvpTable th {
+      padding: 14px 18px;
+      text-align: left;
+      font-family: 'Jost', sans-serif;
+      font-size: 0.65rem;
+      font-weight: 500;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--gold-l);
+      white-space: nowrap;
+    }
+
+    /* Thin gold separator between header cells */
+    #rsvpTable th + th {
+      border-left: 1px solid rgba(184,135,42,0.15);
+    }
+
+    #rsvpTable td {
+      padding: 13px 18px;
+      color: var(--ink);
+      border-bottom: 1px solid rgba(184,135,42,0.1);
+      transition: background 0.2s;
+      vertical-align: middle;
+    }
+
+    #rsvpTable tbody tr:last-child td { border-bottom: none; }
+
+    #rsvpTable tbody tr:nth-child(even) td {
+      background: var(--gold-faint);
+    }
+
+    #rsvpTable tbody tr:hover td {
+      background: rgba(107,21,39,0.05);
+      color: var(--maroon-d);
+    }
+
+    /* Attendance badge */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: capitalize;
+    }
+
+    .badge-yes { background: rgba(44,95,58,0.12); color: #1e5c30; border: 1px solid rgba(44,95,58,0.25); }
+    .badge-no  { background: rgba(107,21,39,0.1);  color: var(--maroon);  border: 1px solid rgba(107,21,39,0.2); }
+    .badge-maybe { background: rgba(201,107,32,0.1); color: var(--saffron); border: 1px solid rgba(201,107,32,0.25); }
+
+    /* Meal dot */
+    .meal-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.8rem;
+    }
+    .meal-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .meal-dot-veg    { background: #2c5f3a; }
+    .meal-dot-nonveg { background: var(--maroon); }
+    .meal-dot-jain   { background: var(--saffron); }
+
+    /* Row reveal animation */
+    #rsvpTable tbody tr {
+      opacity: 0;
+      animation: rowReveal 0.5s ease forwards;
+    }
+
+    @keyframes rowReveal {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* ── Divider ornament ── */
+    .ornament-divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin: 2.8rem 0;
+    }
+
+    .ornament-divider::before,
+    .ornament-divider::after {
+      content: '';
+      flex: 1;
+      max-width: 200px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold));
+    }
+    .ornament-divider::after {
+      background: linear-gradient(90deg, var(--gold), transparent);
+    }
+
+    .ornament-divider svg {
+      width: 18px; height: 18px;
+      fill: var(--gold);
+      opacity: 0.7;
+    }
+
+    /* ── Loading state ── */
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(107,21,39,0.3);
+      border-top: 1px solid rgba(184,135,42,0.12);
+    }
+
+    /* Responsive tweak */
+    @media (max-width: 600px) {
+      .charts { grid-template-columns: 1fr; }
+      .stats-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ HEADER ═══ -->
+  <header>
+    <div class="header-inner">
+      <div class="header-ornament">
+        <span></span>
+        <!-- Floral SVG -->
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C12 2 9 6 9 9a3 3 0 0 0 6 0c0-3-3-7-3-7zm0 20c0 0-3-4-3-7a3 3 0 0 1 6 0c0 3-3 7-3 7zm10-10c0 0-4 3-7 3a3 3 0 0 1 0-6c3 0 7 3 7 3zM2 12c0 0 4-3 7-3a3 3 0 0 1 0 6c-3 0-7-3-7-3z"/>
+        </svg>
+        <span></span>
+      </div>
+      <h1>Wedding RSVP Dashboard</h1>
+      <p class="subtitle">Guest Management &amp; Attendance Overview</p>
+    </div>
+  </header>
+
+  <!-- ═══ MAIN ═══ -->
+  <div class="dashboard-container">
+
+    <!-- Stats -->
+    <div class="section-header">
+      <h2>At a Glance</h2>
+    </div>
+
+    <div class="stats-cards">
+      <div class="card">
+        <div class="card-icon">✦</div>
+        <h2 id="totalGuests">—</h2>
+        <p>Total Guests</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">✿</div>
+        <h2 id="attending">—</h2>
+        <p>Attending</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">✗</div>
+        <h2 id="notAttending">—</h2>
+        <p>Not Attending</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">◈</div>
+        <h2 id="maybe">—</h2>
+        <p>Awaiting Reply</p>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div class="ornament-divider">
+      <svg viewBox="0 0 24 24"><path d="M12 2L9.1 9.1 2 12l7.1 2.9L12 22l2.9-7.1L22 12l-7.1-2.9z"/></svg>
+    </div>
+
+    <!-- Charts -->
+    <div class="section-header">
+      <h2>Response Breakdown</h2>
+    </div>
+
+    <div class="charts">
+      <div class="chart-card">
+        <h3>Attendance Response</h3>
+        <canvas id="attendancePie"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Meal Preferences</h3>
+        <canvas id="mealBar"></canvas>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div class="ornament-divider">
+      <svg viewBox="0 0 24 24"><path d="M12 2L9.1 9.1 2 12l7.1 2.9L12 22l2.9-7.1L22 12l-7.1-2.9z"/></svg>
+    </div>
+
+    <!-- Table -->
+    <div class="table-section">
+      <div class="section-header">
+        <h2>All RSVPs</h2>
+      </div>
+
+      <div class="rsvp-table-wrapper">
+        <table id="rsvpTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Attendance</th>
+              <th>Adults</th>
+              <th>Children</th>
+              <th>Meal</th>
+              <th>Events</th>
+              <th>Blessings</th>
+              <th>Submitted</th>
+            </tr>
+          </thead>
+          <tbody id="rsvpTbody">
+            <tr><td colspan="9" class="loading">Loading guest list…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /.dashboard-container -->
+
+  <footer>✦ &nbsp; Crafted with love &nbsp; ✦</footer>
+
+<script>
+  /* ───────────────────────────────────────
+     Firebase
+  _________________________________________*/
+  const firebaseConfig = {
+    apiKey: "AIzaSyAD2QoDGAm5XYUvoXT4WxyCK20EdIF6kUE",
+    authDomain: "weddinginvite-3f30f.firebaseapp.com",
+    projectId: "weddinginvite-3f30f",
+    storageBucket: "weddinginvite-3f30f.appspot.com",
+    messagingSenderId: "525858481157",
+    appId: "1:525858481157:web:ff81596153c7739658e86c",
+    measurementId: "G-54YVXEGWBH"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  /* ───────────────────────────────────────
+     Animated counter
+  _________________________________________*/
+  function countUp(el, target, duration = 1200) {
+    let start = 0;
+    const step = target / (duration / 16);
+    const tick = () => {
+      start = Math.min(start + step, target);
+      el.textContent = Math.round(start);
+      if (start < target) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  /* ───────────────────────────────────────
+     Chart palette
+  _________________________________________*/
+  const PALETTE = {
+    green:   { bg: 'rgba(44,95,58,0.82)',   border: '#2c5f3a' },
+    maroon:  { bg: 'rgba(107,21,39,0.82)',  border: '#6b1527' },
+    saffron: { bg: 'rgba(201,107,32,0.82)', border: '#c96b20' },
+  };
+
+  /* ───────────────────────────────────────
+     Fetch data once, drive everything
+  _________________________________________*/
+  db.collection("rsvps").get().then((querySnapshot) => {
+
+    let totalGuests = 0, attending = 0, notAttending = 0, maybe = 0;
+    let mealCounts = { veg: 0, nonveg: 0, jain: 0 };
+    let attendanceCounts = { yes: 0, no: 0, maybe: 0 };
+
+    const rows = [];
+
+    querySnapshot.forEach((doc) => {
+      const d = doc.data();
+
+      if (d.attendance === "yes") {
+        const adults   = parseInt(d.adults   || 0);
+        const children = parseInt(d.children || 0);
+        const pax = adults + children;
+        totalGuests += pax;
+        attending   += pax;
+        if (d.meal) mealCounts[d.meal] = (mealCounts[d.meal] || 0) + pax;
+      } else if (d.attendance === "no") {
+        totalGuests  += 1;
+        notAttending += 1;
+      } else {
+        totalGuests += 1;
+        maybe       += 1;
+      }
+
+      attendanceCounts[d.attendance] = (attendanceCounts[d.attendance] || 0) + 1;
+      rows.push(d);
+    });
+
+    /* ── Stat counters ── */
+    countUp(document.getElementById("totalGuests"),  totalGuests);
+    countUp(document.getElementById("attending"),    attending);
+    countUp(document.getElementById("notAttending"), notAttending);
+    countUp(document.getElementById("maybe"),        maybe);
+
+    /* ── Doughnut chart ── */
+    const pieCtx = document.getElementById("attendancePie").getContext("2d");
+    new Chart(pieCtx, {
+      type: "doughnut",
+      data: {
+        labels: ["Attending", "Not Attending", "Maybe"],
+        datasets: [{
+          data: [attendanceCounts.yes, attendanceCounts.no, attendanceCounts.maybe],
+          backgroundColor: [PALETTE.green.bg, PALETTE.maroon.bg, PALETTE.saffron.bg],
+          borderColor:     [PALETTE.green.border, PALETTE.maroon.border, PALETTE.saffron.border],
+          borderWidth: 2,
+          hoverOffset: 16,
+          borderRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: '58%',
+        plugins: {
+          legend: {
+            position: "bottom",
+            labels: {
+              font: { family: 'Jost', size: 13, weight: '400' },
+              color: "#3d0a15",
+              padding: 22,
+              usePointStyle: true,
+              pointStyle: 'circle',
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(61,10,21,0.9)',
+            titleFont: { family: 'Cormorant Garamond', size: 15, weight: '400' },
+            bodyFont:  { family: 'Jost', size: 13 },
+            padding: 12,
+            cornerRadius: 4,
+          }
+        },
+        animation: { animateRotate: true, animateScale: true, duration: 1400, easing: 'easeOutQuart' }
+      }
+    });
+
+    /* ── Bar chart ── */
+    const barCtx = document.getElementById("mealBar").getContext("2d");
+    new Chart(barCtx, {
+      type: "bar",
+      data: {
+        labels: ["Vegetarian", "Non-Veg", "Jain"],
+        datasets: [{
+          label: "Guests",
+          data: [mealCounts.veg, mealCounts.nonveg, mealCounts.jain],
+          backgroundColor: [PALETTE.green.bg, PALETTE.maroon.bg, PALETTE.saffron.bg],
+          borderColor:     [PALETTE.green.border, PALETTE.maroon.border, PALETTE.saffron.border],
+          borderWidth: 1.5,
+          borderRadius: 4,
+          barPercentage: 0.55,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(61,10,21,0.9)',
+            titleFont: { family: 'Cormorant Garamond', size: 15, weight: '400' },
+            bodyFont:  { family: 'Jost', size: 13 },
+            padding: 12,
+            cornerRadius: 4,
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { family: 'Jost', size: 13 }, color: '#3d0a15' }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(184,135,42,0.08)", drawBorder: false },
+            ticks: { font: { family: 'Jost', size: 13 }, color: '#3d0a15' }
+          }
+        },
+        animation: { duration: 1400, easing: 'easeOutCubic' }
+      }
+    });
+
+    /* ── Table ── */
+    const tbody = document.getElementById("rsvpTbody");
+    tbody.innerHTML = "";
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" class="loading">No RSVPs yet.</td></tr>';
+      return;
+    }
+
+    rows.forEach((d, i) => {
+      const row = document.createElement("tr");
+      row.style.animationDelay = `${i * 40}ms`;
+
+      const attendanceClass = d.attendance === 'yes' ? 'badge-yes' : d.attendance === 'no' ? 'badge-no' : 'badge-maybe';
+      const attendanceLabel = d.attendance === 'yes' ? 'Attending' : d.attendance === 'no' ? 'Declined' : 'Maybe';
+
+      let mealHTML = d.meal || '—';
+      if (d.meal) {
+        const dotClass = `meal-dot-${d.meal}`;
+        const label = d.meal === 'nonveg' ? 'Non-Veg' : d.meal.charAt(0).toUpperCase() + d.meal.slice(1);
+        mealHTML = `<span class="meal-tag"><span class="meal-dot ${dotClass}"></span>${label}</span>`;
+      }
+
+      const timeStr = d.time ? new Date(d.time.seconds * 1000).toLocaleString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }) : '—';
+
+      row.innerHTML = `
+        <td><strong style="font-weight:500">${d.name || '—'}</strong></td>
+        <td style="color:var(--muted)">${d.phone || '—'}</td>
+        <td><span class="badge ${attendanceClass}">${attendanceLabel}</span></td>
+        <td style="text-align:center">${d.adults || '—'}</td>
+        <td style="text-align:center">${d.children || '—'}</td>
+        <td>${mealHTML}</td>
+        <td style="color:var(--muted);font-size:0.82rem">${d.events || '—'}</td>
+        <td style="color:var(--muted);font-size:0.82rem;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${d.blessings || ''}">${d.blessings || '—'}</td>
+        <td style="color:var(--muted);font-size:0.78rem;white-space:nowrap">${timeStr}</td>
+      `;
+      tbody.appendChild(row);
+    });
+  });
+</script>
+
+</body>
+</html>

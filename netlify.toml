@@ -1,0 +1,28 @@
+functionsDirectory = "D:\\WEDDING FINAL\\netlify\\functions"
+functionsDirectoryOrigin = "default"
+plugins = []
+headers = []
+redirects = []
+
+[build]
+publish = "D:\\WEDDING FINAL"
+publishOrigin = "default"
+functions = "D:\\WEDDING FINAL\\netlify\\functions"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
+
+[functions]
+
+[functions."*"]
